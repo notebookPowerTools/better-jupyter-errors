@@ -50,19 +50,32 @@ function updateColor(spanEl: HTMLSpanElement, span: any) {
 	}
 }
 
-function attachLink(spanEl: HTMLSpanElement, text: string, executionCount: number, lineNumber: number) {
+function attachFileLink(spanEl: HTMLSpanElement, text: string, fileName: string, lineNumber: number) {
 	const aEl = document.createElement('a');
-	aEl.href = `command:bje.revealrange?\"${executionCount},${lineNumber}\"`;
-	aEl.setAttribute('data-href', `command:bje.revealrange?\"${executionCount},${lineNumber}\"`);
+	aEl.href = `command:bje.revealrange?\"${fileName},${lineNumber}\"`;
+	aEl.setAttribute('data-href', `command:bje.revealrange?\"${fileName},${lineNumber}\"`);
 	aEl.title = 'Navigate to the cell';
 	aEl.text = text;
 	spanEl.appendChild(aEl);
 }
 
+function matchTraceback(traceback: string) {
+	return /^\<ipython-input-(\d)/.test(traceback) || /(\~.*\.py)/.test(traceback);
+}
+
+function matchLineNumber(traceback: string) {
+	const errorLineNumberMatches = /^\-{2,4}> (\d+)/.exec(traceback);
+	if (errorLineNumberMatches && errorLineNumberMatches.length === 2) {
+		return errorLineNumberMatches[1];
+	}
+
+	return null;
+}
+
 function renderTraceback(pre: HTMLElement, datas: string[]) {
 	datas.forEach((data) => {
 		let parsedHTML: HTMLSpanElement[] = [document.createElement('span')];
-		let executionCount = -1;
+		let fileName: string | null = null;
 		const ret = parse(data);
 		ret.spans.forEach((span: any) => {
 			if (span.text === '\n') {
@@ -71,22 +84,20 @@ function renderTraceback(pre: HTMLElement, datas: string[]) {
 			}
 
 			const lastArr = parsedHTML[parsedHTML.length - 1];
-			const inputIndexMatches = /^\<ipython-input-(\d)/.exec(span.text);
-			if (inputIndexMatches && inputIndexMatches.length === 2) {
-				executionCount = Number(inputIndexMatches[1])
+			if (matchTraceback(span.text)) {
+				fileName = span.text;
 				const spanEl = document.createElement('span');
 				updateColor(spanEl, span);
-				attachLink(spanEl, span.text, executionCount, 1);
+				attachFileLink(spanEl, span.text, span.text, 1);
 				lastArr.appendChild(spanEl);
 				return;
 			}
 
-			const errorLineNumberMatches = /^\-{4}> (\d)/.exec(span.text);
-			if (errorLineNumberMatches && errorLineNumberMatches.length === 2) {
-				const lineNumber = Number(errorLineNumberMatches[1]);
+			const errorLineNumber = matchLineNumber(span.text);
+			if (errorLineNumber !== null) {
 				const spanEl = document.createElement('span');
 				updateColor(spanEl, span);
-				attachLink(spanEl, span.text, executionCount, lineNumber);
+				attachFileLink(spanEl, span.text, fileName ?? '', Number(errorLineNumber));
 				lastArr.appendChild(spanEl);
 				return;
 			}
@@ -126,6 +137,25 @@ function renderErrorTitle(divEl: HTMLElement, ename: string, evalue: string) {
 
 	const errorMessage = `${ename}: ${evalue}`;
 	divEl.innerText = errorMessage;
+	divEl.style.color = `var(--vscode-editorError-foreground)`;
+}
+
+function renderExpandButton(divEl: HTMLElement, tracebackEl: HTMLElement) {
+	const button = document.createElement('button');
+	divEl.appendChild(button);
+	button.classList.add(style.showTraceback);
+	button.textContent = 'Show Error Details'
+	button.onclick = () => {
+		if (tracebackEl.classList.contains(style.hiddenTraceback)) {
+			button.textContent = 'Hide Error Details'
+			tracebackEl.classList.remove(style.hiddenTraceback);
+			tracebackEl.classList.add(style.visibleTraceback);
+		} else {
+			button.textContent = 'Show Error Details'
+			tracebackEl.classList.add(style.hiddenTraceback);
+			tracebackEl.classList.remove(style.visibleTraceback);
+		}
+	};
 }
 
 // This function is called to render your contents.
@@ -133,12 +163,18 @@ export function render({ container, mimeType, data }: IRenderInfo) {
 	// Format the JSON and insert it as <pre><code>{ ... }</code></pre>
 	// Replace this with your custom code!
 	const divEl = document.createElement('div');
-	renderErrorTitle(divEl, data.ename, data.evalue);
 	container.appendChild(divEl);
+	const expandEl = document.createElement('div');
+	expandEl.style.marginTop = '8px';
+	container.appendChild(expandEl);
 	const pre = document.createElement('pre');
-	pre.classList.add(style.json);
-	renderTraceback(pre, data.traceback);
 	container.appendChild(pre);
+
+	renderErrorTitle(divEl, data.ename, data.evalue);
+	renderExpandButton(expandEl, pre);
+	pre.classList.add(style.json);
+	pre.classList.add(style.hiddenTraceback)
+	renderTraceback(pre, data.traceback);
 }
 
 if (module.hot) {

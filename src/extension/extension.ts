@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as os from 'os';
 
 export function flatten<T>(array: ReadonlyArray<T>[]): T[] {
     return Array.prototype.concat.apply([], array);
@@ -63,32 +65,57 @@ export function activate(context: vscode.ExtensionContext) {
     }));
 
     context.subscriptions.push(vscode.commands.registerCommand('bje.revealrange', (arg) => {
-        if (!arg) {
-            return;
-        }
-
-        const nums = arg.split(/,/);
-        if (nums.length !== 2) {
-            return;
-        }
-
-        const extCnt = Number(nums[0]);
-        const ln = Number(nums[1]);
         const activeEditor = vscode.window.activeNotebookEditor;
         if (!activeEditor) {
             return;
         }
 
-        const document = activeEditor.document;
-        const cell = document.getCells().find((cell: vscode.NotebookCell) => {
-            return cell.latestExecutionSummary?.executionOrder === extCnt;
-        });
+        if (!arg) {
+            return;
+        }
 
-        if (cell) {
-            vscode.commands.executeCommand('vscode.open', cell.document.uri, {
+        const parsedArgs = arg.split(/,/);
+        if (parsedArgs.length !== 2) {
+            return;
+        }
+
+        const fileName = String(parsedArgs[0]);
+
+        const inputIndexMatches = /^\<ipython-input-(\d)/.exec(fileName);
+        if (inputIndexMatches && inputIndexMatches.length === 2) {
+            // it's cell input
+            const executionCount = Number(inputIndexMatches[1]);
+            const ln = Number(parsedArgs[1]);
+            const document = activeEditor.document;
+
+            const cell = document.getCells().find((cell: vscode.NotebookCell) => {
+                return cell.executionSummary?.executionOrder === executionCount;
+            });
+    
+            if (cell) {
+                vscode.commands.executeCommand('vscode.open', cell.document.uri, {
+                    selection: new vscode.Range(ln - 1, 0, ln - 1, 0)
+                });
+            }
+
+            return;
+        }
+
+        const otherFileName = /(\~.*\.py)/.exec(fileName);
+        if (otherFileName && otherFileName.length === 2) {
+            const filePath = otherFileName[1];
+            const ln = Number(parsedArgs[1]);
+            let filePathUri: vscode.Uri;
+            if (filePath[0] === '~') {
+                filePathUri = vscode.Uri.file(path.join(os.homedir(), filePath.slice(1)));
+            } else {
+                filePathUri = vscode.Uri.file(filePath);
+            }
+            vscode.commands.executeCommand('vscode.open', filePathUri, {
                 selection: new vscode.Range(ln - 1, 0, ln - 1, 0)
             });
         }
+
     }));
 
 }

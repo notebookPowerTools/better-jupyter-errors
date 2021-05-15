@@ -8,4 +8,33 @@ pre > span {
   display: block;
   color: var(--theme-info-foreground);
   line-height: 22px;
+  font-size: 12px;
+}
+
+.showTraceback {
+  display: block;
+  -webkit-box-align: center;
+  align-items: center;
+  background-attachment: initial;
+  background-origin: initial;
+  background-clip: initial;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--theme-info-foreground);
+  background-color: var(--theme-info-background);
+  height: 24px;
+  padding-right: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 400;
+}
+
+pre.hiddenTraceback {
+  display: none;
+}
+
+pre.visibleTraceback {
+  display: block;
 }
