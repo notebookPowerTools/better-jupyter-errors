@@ -38,8 +38,17 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             return cell.outputs.findIndex(output => {
-                return output.outputs.findIndex(item => {
-                    return item.mime === 'application/x.notebook.error-traceback' && (item.value as IErrorOutput).ename === 'ModuleNotFoundError' && (item.value as IErrorOutput).evalue === `No module named '${arg}'`
+                return output.items.findIndex(item => {
+                    if (item.mime === 'application/vnd.code.notebook.error') {
+                        try {
+                            const error = JSON.parse(Buffer.from(item.data).toString()) as IErrorOutput;
+                            if (error.ename === 'ModuleNotFoundError' && error.evalue === `No module named '${arg}'`) {
+                                return true;
+                            }
+                        } catch (_e) {}
+                    }
+
+                    return false;
                 }) > -1;
             }) > -1;
         }

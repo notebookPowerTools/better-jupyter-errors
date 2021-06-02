@@ -6,38 +6,38 @@
 // names into JavaScript: https://github.com/css-modules/css-modules
 // You can configure or change this in the webpack.config.js file.
 import * as style from './style.css';
-import type { NotebookRendererApi } from 'vscode-notebook-renderer';
+import type { RendererContext } from 'vscode-notebook-renderer';
 const { parse } = require('ansicolor')
 
 interface IRenderInfo {
 	container: HTMLElement;
-	mimeType: string;
-	data: any;
-	notebookApi: NotebookRendererApi<unknown>;
-}
+	mime: string;
+	value: any;
+	context: RendererContext<unknown>;
+  }
 
 // color codes from ansicolor
 // const colorCodes      = [   'black',      'red',      'green',      'yellow',      'blue',      'magenta',      'cyan', 'lightGray', '', 'default']
 //     , colorCodesLight = ['darkGray', 'lightRed', 'lightGreen', 'lightYellow', 'lightBlue', 'lightMagenta', 'lightCyan', 'white', '']
 
 const nameMapping: { [key: string]: string } = {
-	'black': '--vscode-terminal-ansiBlack',
-	'red': '--vscode-terminal-ansiRed',
-	'green': '--vscode-terminal-ansiGreen',
-	'yellow': '--vscode-terminal-ansiYellow',
-	'blue': '--vscode-terminal-ansiBlue',
-	'magenta': '--vscode-terminal-ansiMagenta',
-	'cyan': '--vscode-terminal-ansiCyan',
-	'white': '--vscode-terminal-ansiWhite',
-	'lightGray': '--vscode-terminal-ansiWhite',
-	'lightBlack': '--vscode-terminal-ansiBrightBlack',
-	'lightRed': '--vscode-terminal-ansiBrightRed',
-	'lightGreen': '--vscode-terminal-ansiBrightGreen',
-	'lightYellow': '--vscode-terminal-ansiBrightYellow',
-	'lightBlue': '--vscode-terminal-ansiBrightBlue',
-	'lightMagenta': '--vscode-terminal-ansiBrightMagenta',
-	'lightCyan': '--vscode-terminal-ansiBrightCyan',
-	'lightWhite': '--vscode-terminal-ansiBrightWhite'
+	'black': '--theme-terminal-ansiBlack',
+	'red': '--theme-terminal-ansiRed',
+	'green': '--theme-terminal-ansiGreen',
+	'yellow': '--theme-terminal-ansiYellow',
+	'blue': '--theme-terminal-ansiBlue',
+	'magenta': '--theme-terminal-ansiMagenta',
+	'cyan': '--theme-terminal-ansiCyan',
+	'white': '--theme-terminal-ansiWhite',
+	'lightGray': '--theme-terminal-ansiWhite',
+	'lightBlack': '--theme-terminal-ansiBrightBlack',
+	'lightRed': '--theme-terminal-ansiBrightRed',
+	'lightGreen': '--theme-terminal-ansiBrightGreen',
+	'lightYellow': '--theme-terminal-ansiBrightYellow',
+	'lightBlue': '--theme-terminal-ansiBrightBlue',
+	'lightMagenta': '--theme-terminal-ansiBrightMagenta',
+	'lightCyan': '--theme-terminal-ansiBrightCyan',
+	'lightWhite': '--theme-terminal-ansiBrightWhite'
 };
 
 function updateColor(spanEl: HTMLSpanElement, span: any) {
@@ -73,9 +73,9 @@ function matchLineNumber(traceback: string) {
 }
 
 function renderTraceback(pre: HTMLElement, datas: string[]) {
+	let fileName: string | null = null;
 	datas.forEach((data) => {
 		let parsedHTML: HTMLSpanElement[] = [document.createElement('span')];
-		let fileName: string | null = null;
 		const ret = parse(data);
 		ret.spans.forEach((span: any) => {
 			if (span.text === '\n') {
@@ -159,9 +159,7 @@ function renderExpandButton(divEl: HTMLElement, tracebackEl: HTMLElement) {
 }
 
 // This function is called to render your contents.
-export function render({ container, mimeType, data }: IRenderInfo) {
-	// Format the JSON and insert it as <pre><code>{ ... }</code></pre>
-	// Replace this with your custom code!
+export function render({ container, mime, value }: IRenderInfo) {
 	const divEl = document.createElement('div');
 	container.appendChild(divEl);
 	const expandEl = document.createElement('div');
@@ -170,11 +168,11 @@ export function render({ container, mimeType, data }: IRenderInfo) {
 	const pre = document.createElement('pre');
 	container.appendChild(pre);
 
-	renderErrorTitle(divEl, data.ename, data.evalue);
+	renderErrorTitle(divEl, value.name, value.message);
 	renderExpandButton(expandEl, pre);
 	pre.classList.add(style.json);
 	pre.classList.add(style.hiddenTraceback)
-	renderTraceback(pre, data.traceback);
+	renderTraceback(pre, value.stack ? value.stack.split(/\r\n|\r|\n/) : []);
 }
 
 if (module.hot) {

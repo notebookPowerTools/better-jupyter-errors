@@ -14,7 +14,7 @@
  * - Copy this file to your project.
  */
 
- declare module 'vscode' {
+declare module 'vscode' {
 
 	//#region auth provider: https://github.com/microsoft/vscode/issues/88309
 
@@ -80,16 +80,10 @@
 		constructor(host: string, port: number, connectionToken?: string);
 	}
 
-	export enum RemoteTrustOption {
-		Unknown = 0,
-		DisableTrust = 1,
-		MachineTrusted = 2
-	}
-
 	export interface ResolvedOptions {
 		extensionHostEnv?: { [key: string]: string | null; };
 
-		trust?: RemoteTrustOption;
+		isTrusted?: boolean;
 	}
 
 	export interface TunnelOptions {
@@ -150,7 +144,24 @@
 	}
 
 	export interface RemoteAuthorityResolver {
+		/**
+		 * Resolve the authority part of the current opened `vscode-remote://` URI.
+		 *
+		 * This method will be invoked once during the startup of VS Code and again each time
+		 * VS Code detects a disconnection.
+		 *
+		 * @param authority The authority part of the current opened `vscode-remote://` URI.
+		 * @param context A context indicating if this is the first call or a subsequent call.
+		 */
 		resolve(authority: string, context: RemoteAuthorityResolverContext): ResolverResult | Thenable<ResolverResult>;
+
+		/**
+		 * Get the canonical URI (if applicable) for a `vscode-remote://` URI.
+		 *
+		 * @returns The canonical URI or undefined if the uri is already canonical.
+		 */
+		getCanonicalURI?(uri: Uri): ProviderResult<Uri>;
+
 		/**
 		 * Can be optionally implemented if the extension can forward ports better than the core.
 		 * When not implemented, the core will use its default forwarding logic.
@@ -891,9 +902,37 @@
 
 	export interface TerminalOptions {
 		/**
-		 * A codicon ID to associate with this terminal.
+		 * The icon path or {@link ThemeIcon} for the terminal.
 		 */
-		readonly icon?: string;
+		readonly iconPath?: Uri | { light: Uri; dark: Uri } | ThemeIcon;
+	}
+
+	export interface ExtensionTerminalOptions {
+		/**
+		 * A themeIcon, Uri, or light and dark Uris to use as the terminal tab icon
+		 */
+		readonly iconPath?: Uri | { light: Uri; dark: Uri } | ThemeIcon;
+	}
+
+	//#endregion
+
+	//#region Terminal profile provider https://github.com/microsoft/vscode/issues/120369
+
+	export namespace window {
+		/**
+		 * Registers a provider for a contributed terminal profile.
+		 * @param id The ID of the contributed terminal profile.
+		 * @param provider The terminal profile provider.
+		 */
+		export function registerTerminalProfileProvider(id: string, provider: TerminalProfileProvider): Disposable;
+	}
+
+	export interface TerminalProfileProvider {
+		/**
+		 * Provide terminal profile options for the requested terminal.
+		 * @param token A cancellation token that indicates the result is no longer needed.
+		 */
+		provideProfileOptions(token: CancellationToken): ProviderResult<TerminalOptions | ExtensionTerminalOptions>;
 	}
 
 	//#endregion
@@ -938,59 +977,6 @@
 	}
 	//#endregion
 
-	//#region Status bar item with ID and Name: https://github.com/microsoft/vscode/issues/74972
-
-	/**
-	 * Options to configure the status bar item.
-	 */
-	export interface StatusBarItemOptions {
-
-		/**
-		 * A unique identifier of the status bar item. The identifier
-		 * is for example used to allow a user to show or hide the
-		 * status bar item in the UI.
-		 */
-		id: string;
-
-		/**
-		 * A human readable name of the status bar item. The name is
-		 * for example used as a label in the UI to show or hide the
-		 * status bar item.
-		 */
-		name: string;
-
-		/**
-		 * Accessibility information used when screen reader interacts with this status bar item.
-		 */
-		accessibilityInformation?: AccessibilityInformation;
-
-		/**
-		 * The alignment of the status bar item.
-		 */
-		alignment?: StatusBarAlignment;
-
-		/**
-		 * The priority of the status bar item. Higher value means the item should
-		 * be shown more to the left.
-		 */
-		priority?: number;
-	}
-
-	export namespace window {
-
-		/**
-		 * Creates a status bar {@link StatusBarItem item}.
-		 *
-		 * @param options The options of the item. If not provided, some default values
-		 * will be assumed. For example, the `StatusBarItemOptions.id` will be the id
-		 * of the extension and the `StatusBarItemOptions.name` will be the extension name.
-		 * @return A new status bar item.
-		 */
-		export function createStatusBarItem(options?: StatusBarItemOptions): StatusBarItem;
-	}
-
-	//#endregion
-
 	//#region Custom editor move https://github.com/microsoft/vscode/issues/86146
 
 	// TODO: Also for custom editor
@@ -1026,762 +1012,67 @@
 
 	//#endregion
 
-	//#region https://github.com/microsoft/vscode/issues/122922, Notebook, Finalization 1
+	//#region https://github.com/microsoft/vscode/issues/124970, Cell Execution State
 
 	/**
-	 * A notebook cell kind.
+	 * The execution state of a notebook cell.
 	 */
-	export enum NotebookCellKind {
-
-		/**
-		 * A markup-cell is formatted source that is used for display.
-		 */
-		Markup = 1,
-
-		/**
-		 * A code-cell is source that can be {@link NotebookController executed} and that
-		 * produces {@link NotebookCellOutput output}.
-		 */
-		Code = 2
-	}
-
-	/**
-	 * Represents a cell of a {@link NotebookDocument notebook}, either a {@link NotebookCellKind.Code code}-cell
-	 * or {@link NotebookCellKind.Markup markup}-cell.
-	 *
-	 * NotebookCell instances are immutable and are kept in sync for as long as they are part of their notebook.
-	 */
-	// todo@API support ids https://github.com/jupyter/enhancement-proposals/blob/master/62-cell-id/cell-id.md
-	export interface NotebookCell {
-
-		/**
-		 * The index of this cell in its {@link NotebookDocument.cellAt containing notebook}. The
-		 * index is updated when a cell is moved within its notebook. The index is `-1`
-		 * when the cell has been removed from its notebook.
-		 */
-		readonly index: number;
-
-		/**
-		 * The {@link NotebookDocument notebook} that contains this cell.
-		 */
-		readonly notebook: NotebookDocument;
-
-		/**
-		 * The kind of this cell.
-		 */
-		readonly kind: NotebookCellKind;
-
-		/**
-		 * The {@link TextDocument text} of this cell, represented as text document.
-		 */
-		readonly document: TextDocument;
-
-		/**
-		 * The metadata of this cell.
-		 */
-		readonly metadata: NotebookCellMetadata
-
-		/**
-		 * The outputs of this cell.
-		 */
-		readonly outputs: ReadonlyArray<NotebookCellOutput>;
-
-		/**
-		 * The most recent {@link NotebookCellExecutionSummary excution summary} for this cell.
-		 */
-		readonly executionSummary?: NotebookCellExecutionSummary;
-	}
-
-	/**
-	 * Represents a notebook which itself is a sequence of {@link NotebookCell code or markup cells}. Notebook documents are
-	 * created from {@link NotebookData notebook data}.
-	 */
-	export interface NotebookDocument {
-
-		/**
-		 * The associated uri for this notebook.
-		 *
-		 * *Note* that most notebooks use the `file`-scheme, which means they are files on disk. However, **not** all notebooks are
-		 * saved on disk and therefore the `scheme` must be checked before trying to access the underlying file or siblings on disk.
-		 *
-		 * @see {@link FileSystemProvider}
-		 * @see {@link TextDocumentContentProvider}
-		 */
-		readonly uri: Uri;
-
-		// todo@API should we really expose this?
-		// todo@API should this be called `notebookType` or `notebookKind`
-		readonly viewType: string;
-
-		/**
-		 * The version number of this notebook (it will strictly increase after each
-		 * change, including undo/redo).
-		 */
-		readonly version: number;
-
-		/**
-		 * `true` if there are unpersisted changes.
-		 */
-		readonly isDirty: boolean;
-
-		/**
-		 * Is this notebook representing an untitled file which has not been saved yet.
-		 */
-		readonly isUntitled: boolean;
-
-		/**
-		 * `true` if the notebook has been closed. A closed notebook isn't synchronized anymore
-		 * and won't be re-used when the same resource is opened again.
-		 */
-		readonly isClosed: boolean;
-
-		/**
-		 * The {@link NotebookDocumentMetadata metadata} for this notebook.
-		 */
-		readonly metadata: NotebookDocumentMetadata;
-
-		/**
-		 * The number of cells in the notebook.
-		 */
-		readonly cellCount: number;
-
-		/**
-		 * Return the cell at the specified index. The index will be adjusted to the notebook.
-		 *
-		 * @param index - The index of the cell to retrieve.
-		 * @return A {@link NotebookCell cell}.
-		 */
-		cellAt(index: number): NotebookCell;
-
-		/**
-		 * Get the cells of this notebook. A subset can be retrieved by providing
-		 * a range. The range will be adjuset to the notebook.
-		 *
-		 * @param range A notebook range.
-		 * @returns The cells contained by the range or all cells.
-		 */
-		getCells(range?: NotebookRange): NotebookCell[];
-
-		/**
-		 * Save the document. The saving will be handled by the corresponding content provider
-		 *
-		 * @return A promise that will resolve to true when the document
-		 * has been saved. If the file was not dirty or the save failed,
-		 * will return false.
-		 */
-		save(): Thenable<boolean>;
-	}
-
-	export class NotebookCellMetadata {
-		/**
-		 * Whether a code cell's editor is collapsed
-		 */
-		readonly inputCollapsed?: boolean;
-
-		/**
-		 * Whether a code cell's outputs are collapsed
-		 */
-		readonly outputCollapsed?: boolean;
-
-		/**
-		 * Additional attributes of a cell metadata.
-		 */
-		readonly [key: string]: any;
-
-		/**
-		 * Create a new notebook cell metadata.
-		 *
-		 * @param inputCollapsed Whether a code cell's editor is collapsed
-		 * @param outputCollapsed Whether a code cell's outputs are collapsed
-		 */
-		constructor(inputCollapsed?: boolean, outputCollapsed?: boolean);
-
-		/**
-		 * Derived a new cell metadata from this metadata.
-		 *
-		 * @param change An object that describes a change to this NotebookCellMetadata.
-		 * @return A new NotebookCellMetadata that reflects the given change. Will return `this` NotebookCellMetadata if the change
-		 *  is not changing anything.
-		 */
-		with(change: { inputCollapsed?: boolean | null, outputCollapsed?: boolean | null, [key: string]: any }): NotebookCellMetadata;
-	}
-
-	export interface NotebookCellExecutionSummary {
-		readonly executionOrder?: number;
-		readonly success?: boolean;
-		readonly startTime?: number;
-		readonly endTime?: number;
-	}
-
-	export class NotebookDocumentMetadata {
-		/**
-		 * Additional attributes of the document metadata.
-		 */
-		readonly [key: string]: any;
-
-		/**
-		 * Create a new notebook document metadata
-		 */
-		constructor();
-
-		/**
-		 * Derived a new document metadata from this metadata.
-		 *
-		 * @param change An object that describes a change to this NotebookDocumentMetadata.
-		 * @return A new NotebookDocumentMetadata that reflects the given change. Will return `this` NotebookDocumentMetadata if the change
-		 *  is not changing anything.
-		 */
-		with(change: { [key: string]: any }): NotebookDocumentMetadata
-	}
-
-	/**
-	 * A notebook range represents on ordered pair of two cell indicies.
-	 * It is guaranteed that start is less than or equal to end.
-	 */
-	export class NotebookRange {
-
-		/**
-		 * The zero-based start index of this range.
-		 */
-		readonly start: number;
-
-		/**
-		 * The exclusive end index of this range (zero-based).
-		 */
-		readonly end: number;
-
-		/**
-		 * `true` if `start` and `end` are equal.
-		 */
-		readonly isEmpty: boolean;
-
-		/**
-		 * Create a new notebook range. If `start` is not
-		 * before or equal to `end`, the values will be swapped.
-		 *
-		 * @param start start index
-		 * @param end end index.
-		 */
-		constructor(start: number, end: number);
-
-		/**
-		 * Derive a new range for this range.
-		 *
-		 * @param change An object that describes a change to this range.
-		 * @return A range that reflects the given change. Will return `this` range if the change
-		 * is not changing anything.
-		 */
-		with(change: { start?: number, end?: number }): NotebookRange;
-	}
-
-	// code specific mime types
-	// application/x.notebook.error-traceback
-	// application/x.notebook.stdout
-	// application/x.notebook.stderr
-	// application/x.notebook.stream
-	export class NotebookCellOutputItem {
-
-		// todo@API
-		// add factory functions for common mime types
-		// static textplain(value:string): NotebookCellOutputItem;
-		// static errortrace(value:any): NotebookCellOutputItem;
-
-		/**
-		 * Creates `application/x.notebook.error`
-		 *
-		 * @param err An error for which an output item is wanted
-		 */
-		static error(err: Error): NotebookCellOutputItem;
-
-		mime: string;
-
-		//todo@API string or Unit8Array?
-		// value: string | Uint8Array | unknown;
-		value: unknown;
-
-		metadata?: { [key: string]: any };
-
-		constructor(mime: string, value: unknown, metadata?: { [key: string]: any });
-	}
-
-	// @jrieken transient
-	export class NotebookCellOutput {
-		id: string;
-		outputs: NotebookCellOutputItem[];
-		metadata?: { [key: string]: any };
-		constructor(outputs: NotebookCellOutputItem[], metadata?: { [key: string]: any });
-		constructor(outputs: NotebookCellOutputItem[], id: string, metadata?: { [key: string]: any });
-	}
-
-	/**
-	 * NotebookCellData is the raw representation of notebook cells. Its is part of {@link NotebookData `NotebookData`}.
-	 */
-	// todo@API support ids https://github.com/jupyter/enhancement-proposals/blob/master/62-cell-id/cell-id.md
-	export class NotebookCellData {
-
-		/**
-		 * The {@link NotebookCellKind kind} of this cell data.
-		 */
-		kind: NotebookCellKind;
-
-		/**
-		 * The source value of this cell data - either source code or formatted text.
-		 */
-		value: string;
-
-		/**
-		 * The language identifier of the source value of this cell data. Any value from
-		 * {@link languages.getLanguages `getLanguages`} is possible.
-		 */
-		languageId: string;
-
-		/**
-		 * The outputs of this cell data.
-		 */
-		outputs?: NotebookCellOutput[];
-
-		/**
-		 * The metadata of this cell data.
-		 */
-		metadata?: NotebookCellMetadata;
-
-		/**
-		 * The execution summary of this cell data.
-		 */
-		executionSummary?: NotebookCellExecutionSummary;
-
-		/**
-		 * Create new cell data. Minimal cell data specifies its kind, its source value, and the
-		 * language identifier of its source.
-		 *
-		 * @param kind The kind.
-		 * @param value The source value.
-		 * @param languageId The language identifier of the source value.
-		 * @param outputs //TODO@API remove ctor?
-		 * @param metadata //TODO@API remove ctor?
-		 * @param executionSummary //TODO@API remove ctor?
-		 */
-		constructor(kind: NotebookCellKind, value: string, languageId: string, outputs?: NotebookCellOutput[], metadata?: NotebookCellMetadata, executionSummary?: NotebookCellExecutionSummary);
-	}
-
-	/**
-	 * NotebookData is the raw representation of notebooks.
-	 *
-	 * Extensions are responsible to create {@link NotebookData `NotebookData`} so that the editor
-	 * can create a {@link NotebookDocument `NotebookDocument`}.
-	 *
-	 * @see {@link NotebookSerializer}
-	 */
-	export class NotebookData {
-		/**
-		 * The cell data of this notebook data.
-		 */
-		cells: NotebookCellData[];
-
-		/**
-		 * The metadata of this notebook data.
-		 */
-		metadata: NotebookDocumentMetadata;
-
-		/**
-		 * Create new notebook data.
-		 *
-		 * @param cells An array of cell data.
-		 * @param metadata Notebook metadata.
-		 */
-		constructor(cells: NotebookCellData[], metadata?: NotebookDocumentMetadata);
-	}
-
-	/**
-	 * The notebook serializer enables the editor to open notebook files.
-	 *
-	 * At its core the editor only knows a {@link NotebookData notebook data structure} but not
-	 * how that data structure is written to a file, nor how it is read from a file. The
-	 * notebook serializer bridges this gap by deserializing bytes into notebook data and
-	 * vice versa.
-	 */
-	export interface NotebookSerializer {
-
-		/**
-		 * Deserialize contents of a notebook file into the notebook data structure.
-		 *
-		 * @param content Contents of a notebook file.
-		 * @param token A cancellation token.
-		 * @return Notebook data or a thenable that resolves to such.
-		 */
-		deserializeNotebook(content: Uint8Array, token: CancellationToken): NotebookData | Thenable<NotebookData>;
-
-		/**
-		 * Serialize notebook data into file contents.
-		 *
-		 * @param data A notebook data structure.
-		 * @param token A cancellation token.
-		 * @returns An array of bytes or a thenable that resolves to such.
-		 */
-		serializeNotebook(data: NotebookData, token: CancellationToken): Uint8Array | Thenable<Uint8Array>;
-	}
-
-	export interface NotebookDocumentContentOptions {
-		/**
-		 * Controls if outputs change will trigger notebook document content change and if it will be used in the diff editor
-		 * Default to false. If the content provider doesn't persisit the outputs in the file document, this should be set to true.
-		 */
-		transientOutputs?: boolean;
-
-		/**
-		 * Controls if a cell metadata property change will trigger notebook document content change and if it will be used in the diff editor
-		 * Default to false. If the content provider doesn't persisit a metadata property in the file document, it should be set to true.
-		 */
-		transientCellMetadata?: { [K in keyof NotebookCellMetadata]?: boolean };
-
-		/**
-		* Controls if a document metadata property change will trigger notebook document content change and if it will be used in the diff editor
-		* Default to false. If the content provider doesn't persisit a metadata property in the file document, it should be set to true.
-		*/
-		transientDocumentMetadata?: { [K in keyof NotebookDocumentMetadata]?: boolean };
-	}
-
-	export interface NotebookExecuteHandler {
-		/**
-		 * @param cells The notebook cells to execute.
-		 * @param notebook The notebook for which the execute handler is being called.
-		 * @param controller The controller that the handler is attached to
-		 */
-		(this: NotebookController, cells: NotebookCell[], notebook: NotebookDocument, controller: NotebookController): void | Thenable<void>
-	}
-
-	export interface NotebookInterruptHandler {
-		/**
-		 * @param notebook The notebook for which the interrupt handler is being called.
-		 */
-		(this: NotebookController, notebook: NotebookDocument): void | Thenable<void>;
-	}
-
-	export enum NotebookControllerAffinity {
-		Default = 1,
-		Preferred = 2
-	}
-
-	// todo@API this is called Controller
-	export class NotebookKernelPreload {
-		/**
-		 * APIs that the preload provides to the renderer. These are matched
-		 * against the `dependencies` and `optionalDependencies` arrays in the
-		 * notebook renderer contribution point.
-		 */
-		readonly provides: string[];
-
-		/**
-		 * URI for the file to preload
-		 */
-		readonly uri: Uri;
-
-		/**
-		 * @param uri URI for the file to preload
-		 * @param provides Value for the `provides` property
-		 */
-		constructor(uri: Uri, provides?: string | string[]);
-	}
-
-	export interface NotebookCellExecuteStartContext {
-		/**
-		 * The time that execution began, in milliseconds in the Unix epoch. Used to drive the clock
-		 * that shows for how long a cell has been running. If not given, the clock won't be shown.
-		 */
-		startTime?: number;
-	}
-
-	export interface NotebookCellExecuteEndContext {
-		/**
-		 * If true, a green check is shown on the cell status bar.
-		 * If false, a red X is shown.
-		 */
-		success?: boolean;
-
-		/**
-		 * The time that execution finished, in milliseconds in the Unix epoch.
-		 */
-		endTime?: number;
-	}
-
-	// todo@API jsdoc slightly outdated: kernel, notebook.createNotebookCellExecutionTask
-	/**
-	 * A NotebookCellExecutionTask is how the kernel modifies a notebook cell as it is executing. When
-	 * {@link notebook.createNotebookCellExecutionTask `createNotebookCellExecutionTask`} is called, the cell
-	 * enters the Pending state. When `start()` is called on the execution task, it enters the Executing state. When
-	 * `end()` is called, it enters the Idle state. While in the Executing state, cell outputs can be
-	 * modified with the methods on the run task.
-	 *
-	 * All outputs methods operate on this NotebookCellExecutionTask's cell by default. They optionally take
-	 * a cellIndex parameter that allows them to modify the outputs of other cells. `appendOutputItems` and
-	 * `replaceOutputItems` operate on the output with the given ID, which can be an output on any cell. They
-	 * all resolve once the output edit has been applied.
-	 */
-	export interface NotebookCellExecutionTask {
-		readonly document: NotebookDocument;
-		readonly cell: NotebookCell;
-		readonly token: CancellationToken;
-
-		start(context?: NotebookCellExecuteStartContext): void;
-		executionOrder: number | undefined;
-		end(result?: NotebookCellExecuteEndContext): void;
-
-		clearOutput(cellIndex?: number): Thenable<void>;
-		appendOutput(out: NotebookCellOutput | NotebookCellOutput[], cellIndex?: number): Thenable<void>;
-		replaceOutput(out: NotebookCellOutput | NotebookCellOutput[], cellIndex?: number): Thenable<void>;
-		appendOutputItems(items: NotebookCellOutputItem | NotebookCellOutputItem[], outputId: string): Thenable<void>;
-		replaceOutputItems(items: NotebookCellOutputItem | NotebookCellOutputItem[], outputId: string): Thenable<void>;
-	}
-
-	export interface NotebookController {
-
-		/**
-		 * The identifier of this notebook controller.
-		 */
-		readonly id: string;
-
-		/**
-		 * The notebook view type this controller is for.
-		 */
-		readonly viewType: string;
-
-		/**
-		 * An array of language identifiers that are supported by this
-		 * controller. Any language identifier from {@link languages.getLanguages `getLanguages`}
-		 * is possible. When falsy all languages are supported.
-		 *
-		 * Samples:
-		 * ```js
-		 * // support JavaScript and TypeScript
-		 * myController.supportedLanguages = ['javascript', 'typescript']
-		 *
-		 * // support all languages
-		 * myController.supportedLanguages = undefined; // falsy
-		 * myController.supportedLanguages = []; // falsy
-		 * ```
-		 */
-		supportedLanguages?: string[];
-
-		/**
-		 * The human-readable label of this notebook controller.
-		 */
-		label: string;
-
-		/**
-		 * The human-readable description which is rendered less prominent.
-		 */
-		description?: string;
-
-		/**
-		 * The human-readable detail which is rendered less prominent.
-		 */
-		detail?: string;
-
-		/**
-		 * Whether this controller supports execution order so that the
-		 * editor can render placeholders for them.
-		 */
-		// todo@API rename to supportsExecutionOrder, usesExecutionOrder
-		hasExecutionOrder?: boolean;
-
-		/**
-		 * The execute handler is invoked when the run gestures in the UI are selected, e.g Run Cell, Run All,
-		 * Run Selection etc.
-		 */
-		executeHandler: NotebookExecuteHandler;
-
-		/**
-		 * The interrupt handler is invoked the interrupt all execution. This is contrary to cancellation (available via
-		 * [`NotebookCellExecutionTask#token`](NotebookCellExecutionTask#token)) and should only be used when
-		 * execution-level cancellation is supported
-		 */
-		interruptHandler?: NotebookInterruptHandler
-
-		/**
-		 * Dispose and free associated resources.
-		 */
-		dispose(): void;
-
-		/**
-		 * An event that fires whenever a controller has been selected for a notebook document. Selecting a controller
-		 * for a notebook is a user gesture and happens either explicitly or implicitly when interacting while a
-		 * controller was suggested.
-		 */
-		readonly onDidChangeNotebookAssociation: Event<{ notebook: NotebookDocument, selected: boolean }>;
-
-		/**
-		 * A controller can set affinities for specific notebook documents. This allows a controller
-		 * to be more important for some notebooks.
-		 *
-		 * @param notebook The notebook for which a priority is set.
-		 * @param affinity A controller affinity
-		 */
-		updateNotebookAffinity(notebook: NotebookDocument, affinity: NotebookControllerAffinity): void;
-
-		/**
-		 * Create a cell execution task.
-		 *
-		 * This should be used in response to the {@link NotebookController.executeHandler execution handler}
-		 * being calleed or when cell execution has been started else, e.g when a cell was already
-		 * executing or when cell execution was triggered from another source.
-		 *
-		 * @param cell The notebook cell for which to create the execution.
-		 * @returns A notebook cell execution.
-		 */
-		createNotebookCellExecutionTask(cell: NotebookCell): NotebookCellExecutionTask;
-
-		// todo@API find a better name than "preloads"
-		// todo@API allow add, not remove
-		// ipc
-		readonly preloads: NotebookKernelPreload[];
-
-		/**
-		 * An event that fires when a renderer (see `preloads`) has send a message to the controller.
-		 */
-		readonly onDidReceiveMessage: Event<{ editor: NotebookEditor, message: any }>;
-
-		/**
-		 * Send a message to the renderer of notebook editors.
-		 *
-		 * Note that only editors showing documents that are bound to this controller
-		 * are receiving the message.
-		 *
-		 * @param message The message to send.
-		 * @param editor A specific editor to send the message to. When `undefined` all applicable editors are receiving the message.
-		 * @returns A promise that resolves to a boolean indicating if the message has been send or not.
-		 */
-		postMessage(message: any, editor?: NotebookEditor): Thenable<boolean>;
-
-		//todo@API validate this works
-		asWebviewUri(localResource: Uri): Uri;
-	}
-
 	export enum NotebookCellExecutionState {
+		/**
+		 * The cell is idle.
+		 */
 		Idle = 1,
+		/**
+		 * Execution for the cell is pending.
+		 */
 		Pending = 2,
+		/**
+		 * The cell is currently executing.
+		 */
 		Executing = 3,
 	}
 
+	/**
+	 * An event describing a cell execution state change.
+	 */
 	export interface NotebookCellExecutionStateChangeEvent {
 		/**
-		 * The {@link NotebookDocument notebook document} for which the cell execution state has changed.
+		 * The {@link NotebookCell cell} for which the execution state has changed.
 		 */
-		readonly document: NotebookDocument;
 		readonly cell: NotebookCell;
-		readonly executionState: NotebookCellExecutionState;
+
+		/**
+		 * The new execution state of the cell.
+		 */
+		readonly state: NotebookCellExecutionState;
 	}
+
+	export namespace notebooks {
+
+		/**
+		 * An {@link Event} which fires when the execution state of a cell has changed.
+		 */
+		// todo@API this is an event that is fired for a property that cells don't have and that makes me wonder
+		// how a correct consumer works, e.g the consumer could have been late and missed an event?
+		export const onDidChangeNotebookCellExecutionState: Event<NotebookCellExecutionStateChangeEvent>;
+	}
+
+	//#endregion
+
+	//#region https://github.com/microsoft/vscode/issues/106744, Notebook, deprecated
 
 	/**
-	 * Represents the alignment of status bar items.
+	 * @deprecated use notebooks instead
 	 */
-	export enum NotebookCellStatusBarAlignment {
-
-		/**
-		 * Aligned to the left side.
-		 */
-		Left = 1,
-
-		/**
-		 * Aligned to the right side.
-		 */
-		Right = 2
-	}
-
-	export class NotebookCellStatusBarItem {
-		text: string;
-		alignment: NotebookCellStatusBarAlignment;
-		command?: string | Command;
-		tooltip?: string;
-		priority?: number;
-		accessibilityInformation?: AccessibilityInformation;
-
-		constructor(text: string, alignment: NotebookCellStatusBarAlignment, command?: string | Command, tooltip?: string, priority?: number, accessibilityInformation?: AccessibilityInformation);
-	}
-
-	export interface NotebookCellStatusBarItemProvider {
-		/**
-		 * Implement and fire this event to signal that statusbar items have changed. The provide method will be called again.
-		 */
-		onDidChangeCellStatusBarItems?: Event<void>;
-
-		/**
-		 * The provider will be called when the cell scrolls into view, when its content, outputs, language, or metadata change, and when it changes execution state.
-		 */
-		provideCellStatusBarItems(cell: NotebookCell, token: CancellationToken): ProviderResult<NotebookCellStatusBarItem[]>;
-	}
-
-	export namespace notebook {
-
-		/**
-		 * All notebook documents currently known to the editor.
-		 */
-		export const notebookDocuments: ReadonlyArray<NotebookDocument>;
-
-		/**
-		 * Open a notebook. Will return early if this notebook is already {@link notebook.notebookDocuments loaded}. Otherwise
-		 * the notebook is loaded and the {@link notebook.onDidOpenNotebookDocument `onDidOpenNotebookDocument`}-event fires.
-		 *
-		 * *Note* that the lifecycle of the returned notebook is owned by the editor and not by the extension. That means an
-		 * {@link notebook.onDidCloseNotebookDocument `onDidCloseNotebookDocument`}-event can occur at any time after.
-		 *
-		 * *Note* that opening a notebook does not show a notebook editor. This function only returns a notebook document which
-		 * can be showns in a notebook editor but it can also be used for other things.
-		 *
-		 * @param uri The resource to open.
-		 * @returns A promise that resolves to a {@link NotebookDocument notebook}
-		 */
-		export function openNotebookDocument(uri: Uri): Thenable<NotebookDocument>;
-
-		/**
-		 * An event that is emitted when a {@link NotebookDocument notebook} is opened.
-		 */
-		export const onDidOpenNotebookDocument: Event<NotebookDocument>;
-
-		/**
-		 * An event that is emitted when a {@link NotebookDocument notebook} is disposed.
-		 *
-		 * *Note 1:* There is no guarantee that this event fires when an editor tab is closed.
-		 *
-		 * *Note 2:* A notebook can be open but not shown in an editor which means this event can fire
-		 * for a notebook that has not been shown in an editor.
-		 */
-		export const onDidCloseNotebookDocument: Event<NotebookDocument>;
-
-		/**
-		 * Register a {@link NotebookSerializer notebook serializer}.
-		 *
-		 * A notebook serializer must to be contributed through the `notebooks` extension point. When opening a notebook file, the editor will send
-		 * the `onNotebook:<notebookType>` activation event, and extensions must register their serializer in return.
-		 *
-		 * @param notebookType A notebook.
-		 * @param serializer A notebook serialzier.
-		 * @param options Optional context options that define what parts of a notebook should be persisted
-		 * @return A {@link Disposable} that unregisters this serializer when being disposed.
-		 */
-		export function registerNotebookSerializer(notebookType: string, serializer: NotebookSerializer, options?: NotebookDocumentContentOptions): Disposable;
-
-		/**
-		 * Creates a new notebook controller.
-		 *
-		 * @param id Identifier of the controller. Must be unique per extension.
-		 * @param viewType A notebook view type for which this controller is for.
-		 * @param label The label of the controller
-		 * @param handler
-		 * @param preloads
-		 */
-		export function createNotebookController(id: string, viewType: string, label: string, handler?: NotebookExecuteHandler, preloads?: NotebookKernelPreload[]): NotebookController;
-
-		// todo@API what is this used for?
-		// todo@API qualify cell, ...NotebookCell...
-		export const onDidChangeNotebookCellExecutionState: Event<NotebookCellExecutionStateChangeEvent>;
-
-		export function registerNotebookCellStatusBarItemProvider(notebookType: string, provider: NotebookCellStatusBarItemProvider): Disposable;
-	}
+	export const notebook: typeof notebooks;
 
 	//#endregion
 
 	//#region https://github.com/microsoft/vscode/issues/106744, NotebookEditor
 
+	/**
+	 * Represents a notebook editor that is attached to a {@link NotebookDocument notebook}.
+	 */
 	export enum NotebookEditorRevealType {
 		/**
 		 * The range will be revealed with as little scrolling as possible.
@@ -1805,10 +1096,14 @@
 		AtTop = 3
 	}
 
+	/**
+	 * Represents a notebook editor that is attached to a {@link NotebookDocument notebook}.
+	 */
 	export interface NotebookEditor {
 		/**
 		 * The document associated with this notebook editor.
 		 */
+		//todo@api rename to notebook?
 		readonly document: NotebookDocument;
 
 		/**
@@ -1841,6 +1136,7 @@
 		/**
 		 * The {@link NotebookDocument notebook document} for which the document metadata have changed.
 		 */
+		//todo@API rename to notebook?
 		readonly document: NotebookDocument;
 	}
 
@@ -1858,6 +1154,7 @@
 		/**
 		 * The {@link NotebookDocument notebook document} for which the cells have changed.
 		 */
+		//todo@API rename to notebook?
 		readonly document: NotebookDocument;
 		readonly changes: ReadonlyArray<NotebookCellsChangeData>;
 	}
@@ -1866,7 +1163,9 @@
 		/**
 		 * The {@link NotebookDocument notebook document} for which the cell outputs have changed.
 		 */
+		//todo@API remove? use cell.notebook instead?
 		readonly document: NotebookDocument;
+		// NotebookCellOutputsChangeEvent.cells vs NotebookCellMetadataChangeEvent.cell
 		readonly cells: NotebookCell[];
 	}
 
@@ -1874,7 +1173,9 @@
 		/**
 		 * The {@link NotebookDocument notebook document} for which the cell metadata have changed.
 		 */
+		//todo@API remove? use cell.notebook instead?
 		readonly document: NotebookDocument;
+		// NotebookCellOutputsChangeEvent.cells vs NotebookCellMetadataChangeEvent.cell
 		readonly cell: NotebookCell;
 	}
 
@@ -1902,7 +1203,7 @@
 		selections?: NotebookRange[];
 	}
 
-	export namespace notebook {
+	export namespace notebooks {
 
 
 
@@ -1952,15 +1253,15 @@
 
 	export interface WorkspaceEdit {
 		// todo@API add NotebookEdit-type which handles all these cases?
-		replaceNotebookMetadata(uri: Uri, value: NotebookDocumentMetadata): void;
+		replaceNotebookMetadata(uri: Uri, value: { [key: string]: any }): void;
 		replaceNotebookCells(uri: Uri, range: NotebookRange, cells: NotebookCellData[], metadata?: WorkspaceEditEntryMetadata): void;
-		replaceNotebookCellMetadata(uri: Uri, index: number, cellMetadata: NotebookCellMetadata, metadata?: WorkspaceEditEntryMetadata): void;
+		replaceNotebookCellMetadata(uri: Uri, index: number, cellMetadata: { [key: string]: any }, metadata?: WorkspaceEditEntryMetadata): void;
 	}
 
 	export interface NotebookEditorEdit {
-		replaceMetadata(value: NotebookDocumentMetadata): void;
+		replaceMetadata(value: { [key: string]: any }): void;
 		replaceCells(start: number, end: number, cells: NotebookCellData[]): void;
-		replaceCellMetadata(index: number, metadata: NotebookCellMetadata): void;
+		replaceCellMetadata(index: number, metadata: { [key: string]: any }): void;
 	}
 
 	export interface NotebookEditor {
@@ -1997,7 +1298,7 @@
 		dispose(): void;
 	}
 
-	export namespace notebook {
+	export namespace notebooks {
 		export function createNotebookEditorDecorationType(options: NotebookDecorationRenderOptions): NotebookEditorDecorationType;
 	}
 
@@ -2005,7 +1306,7 @@
 
 	//#region https://github.com/microsoft/vscode/issues/106744, NotebookConcatTextDocument
 
-	export namespace notebook {
+	export namespace notebooks {
 		/**
 		 * Create a document that is the concatenation of all  notebook cells. By default all code-cells are included
 		 * but a selector can be provided to narrow to down the set of cells.
@@ -2090,7 +1391,7 @@
 		backupNotebook(document: NotebookDocument, context: NotebookDocumentBackupContext, token: CancellationToken): Thenable<NotebookDocumentBackup>;
 	}
 
-	export namespace notebook {
+	export namespace notebooks {
 
 		// TODO@api use NotebookDocumentFilter instead of just notebookType:string?
 		// TODO@API options duplicates the more powerful variant on NotebookContentProvider
@@ -2107,7 +1408,7 @@
 		exclusive?: boolean;
 	}
 
-	export namespace notebook {
+	export namespace notebooks {
 		// SPECIAL overload with NotebookRegistrationData
 		export function registerNotebookContentProvider(notebookType: string, provider: NotebookContentProvider, options?: NotebookDocumentContentOptions, registrationData?: NotebookRegistrationData): Disposable;
 		// SPECIAL overload with NotebookRegistrationData
@@ -2145,6 +1446,109 @@
 		 * The return-type of a function or type of a property/variable. Rendered rightmost.
 		 */
 		type?: string;
+	}
+
+	//#endregion
+
+	//#region @https://github.com/microsoft/vscode/issues/123601, notebook messaging
+
+	export interface NotebookRendererMessage<T> {
+		/**
+		 * Editor that sent the message.
+		 */
+		editor: NotebookEditor;
+
+		/**
+		 * Message sent from the webview.
+		 */
+		message: T;
+	}
+
+	/**
+	 * Renderer messaging is used to communicate with a single renderer. It's
+	 * returned from {@link notebooks.createRendererMessaging}.
+	 */
+	export interface NotebookRendererMessaging<TSend = any, TReceive = TSend> {
+		/**
+		 * Events that fires when a message is received from a renderer.
+		 */
+		onDidReceiveMessage: Event<NotebookRendererMessage<TReceive>>;
+
+		/**
+		 * Sends a message to the renderer.
+		 * @param editor Editor to target with the message
+		 * @param message Message to send
+		 */
+		postMessage(editor: NotebookEditor, message: TSend): void;
+	}
+
+	/**
+	 * Represents a script that is loaded into the notebook renderer before rendering output. This allows
+	 * to provide and share functionality for notebook markup and notebook output renderers.
+	 */
+	export class NotebookRendererScript {
+
+		/**
+		 * APIs that the preload provides to the renderer. These are matched
+		 * against the `dependencies` and `optionalDependencies` arrays in the
+		 * notebook renderer contribution point.
+		 */
+		provides: string[];
+
+		/**
+		 * URI for the file to preload
+		 */
+		uri: Uri;
+
+		/**
+		 * @param uri URI for the file to preload
+		 * @param provides Value for the `provides` property
+		 */
+		constructor(uri: Uri, provides?: string | string[]);
+	}
+
+	export interface NotebookController {
+
+		// todo@API allow add, not remove
+		readonly rendererScripts: NotebookRendererScript[];
+
+		/**
+		 * An event that fires when a {@link NotebookController.rendererScripts renderer script} has send a message to
+		 * the controller.
+		 */
+		readonly onDidReceiveMessage: Event<{ editor: NotebookEditor, message: any }>;
+
+		/**
+		 * Send a message to the renderer of notebook editors.
+		 *
+		 * Note that only editors showing documents that are bound to this controller
+		 * are receiving the message.
+		 *
+		 * @param message The message to send.
+		 * @param editor A specific editor to send the message to. When `undefined` all applicable editors are receiving the message.
+		 * @returns A promise that resolves to a boolean indicating if the message has been send or not.
+		 */
+		postMessage(message: any, editor?: NotebookEditor): Thenable<boolean>;
+
+		//todo@API validate this works
+		asWebviewUri(localResource: Uri): Uri;
+	}
+
+	export namespace notebooks {
+
+		export function createNotebookController(id: string, viewType: string, label: string, handler?: NotebookExecuteHandler, rendererScripts?: NotebookRendererScript[]): NotebookController;
+
+		/**
+		 * Creates a new messaging instance used to communicate with a specific
+		 * renderer. The renderer only has access to messaging if `requiresMessaging`
+		 * is set to `always` or `optional` in its `notebookRenderer ` contribution.
+		 *
+		 * @see https://github.com/microsoft/vscode/issues/123601
+		 * @param rendererId The renderer ID to communicate with
+		*/
+		// todo@API can ANY extension talk to renderer or is there a check that the calling extension
+		// declared the renderer in its package.json?
+		export function createRendererMessaging<TSend = any, TReceive = TSend>(rendererId: string): NotebookRendererMessaging<TSend, TReceive>;
 	}
 
 	//#endregion
@@ -3181,6 +2585,69 @@
 
 	//#endregion
 
+	//#region @joaomoreno https://github.com/microsoft/vscode/issues/124263
+	// This API change only affects behavior and documentation, not API surface.
+
+	namespace env {
+
+		/**
+		 * Resolves a uri to form that is accessible externally.
+		 *
+		 * #### `http:` or `https:` scheme
+		 *
+		 * Resolves an *external* uri, such as a `http:` or `https:` link, from where the extension is running to a
+		 * uri to the same resource on the client machine.
+		 *
+		 * This is a no-op if the extension is running on the client machine.
+		 *
+		 * If the extension is running remotely, this function automatically establishes a port forwarding tunnel
+		 * from the local machine to `target` on the remote and returns a local uri to the tunnel. The lifetime of
+		 * the port forwarding tunnel is managed by VS Code and the tunnel can be closed by the user.
+		 *
+		 * *Note* that uris passed through `openExternal` are automatically resolved and you should not call `asExternalUri` on them.
+		 *
+		 * #### `vscode.env.uriScheme`
+		 *
+		 * Creates a uri that - if opened in a browser (e.g. via `openExternal`) - will result in a registered {@link UriHandler}
+		 * to trigger.
+		 *
+		 * Extensions should not make any assumptions about the resulting uri and should not alter it in anyway.
+		 * Rather, extensions can e.g. use this uri in an authentication flow, by adding the uri as callback query
+		 * argument to the server to authenticate to.
+		 *
+		 * *Note* that if the server decides to add additional query parameters to the uri (e.g. a token or secret), it
+		 * will appear in the uri that is passed to the {@link UriHandler}.
+		 *
+		 * **Example** of an authentication flow:
+		 * ```typescript
+		 * vscode.window.registerUriHandler({
+		 *   handleUri(uri: vscode.Uri): vscode.ProviderResult<void> {
+		 *     if (uri.path === '/did-authenticate') {
+		 *       console.log(uri.toString());
+		 *     }
+		 *   }
+		 * });
+		 *
+		 * const callableUri = await vscode.env.asExternalUri(vscode.Uri.parse(`${vscode.env.uriScheme}://my.extension/did-authenticate`));
+		 * await vscode.env.openExternal(callableUri);
+		 * ```
+		 *
+		 * *Note* that extensions should not cache the result of `asExternalUri` as the resolved uri may become invalid due to
+		 * a system or user action — for example, in remote cases, a user may close a port forwarding tunnel that was opened by
+		 * `asExternalUri`.
+		 *
+		 * #### Any other scheme
+		 *
+		 * Any other scheme will be handled as if the provided URI is a workspace URI. In that case, the method will return
+		 * a URI which, when handled, will make VS Code open the workspace.
+		 *
+		 * @return A uri that can be used on the client machine.
+		 */
+		export function asExternalUri(target: Uri): Thenable<Uri>;
+	}
+
+	//#endregion
+
 	//#region https://github.com/Microsoft/vscode/issues/15178
 
 	// TODO@API must be a class
@@ -3289,6 +2756,109 @@
 
 	//#endregion
 
+	//#region https://github.com/microsoft/vscode/issues/124024 @hediet @alexdima
+
+	export namespace languages {
+		/**
+		 * Registers an inline completion provider.
+		 */
+		export function registerInlineCompletionItemProvider(selector: DocumentSelector, provider: InlineCompletionItemProvider): Disposable;
+	}
+
+	export interface InlineCompletionItemProvider<T extends InlineCompletionItem = InlineCompletionItem> {
+		/**
+		 * Provides inline completion items for the given position and document.
+		 * If inline completions are enabled, this method will be called whenever the user stopped typing.
+		 * It will also be called when the user explicitly triggers inline completions or asks for the next or previous inline completion.
+		 * Use `context.triggerKind` to distinguish between these scenarios.
+		*/
+		provideInlineCompletionItems(document: TextDocument, position: Position, context: InlineCompletionContext, token: CancellationToken): ProviderResult<InlineCompletionList<T> | T[]>;
+	}
+
+	export interface InlineCompletionContext {
+		/**
+		 * How the completion was triggered.
+		 */
+		readonly triggerKind: InlineCompletionTriggerKind;
+	}
+
+	/**
+	 * How an {@link InlineCompletionItemProvider inline completion provider} was triggered.
+	 */
+	export enum InlineCompletionTriggerKind {
+		/**
+		 * Completion was triggered automatically while editing.
+		 * It is sufficient to return a single completion item in this case.
+		 */
+		Automatic = 0,
+
+		/**
+		 * Completion was triggered explicitly by a user gesture.
+		 * Return multiple completion items to enable cycling through them.
+		 */
+		Explicit = 1,
+	}
+
+	export class InlineCompletionList<T extends InlineCompletionItem = InlineCompletionItem> {
+		items: T[];
+
+		constructor(items: T[]);
+	}
+
+	export class InlineCompletionItem {
+		/**
+		 * The text to insert.
+		 * If the text contains a line break, the range must end at the end of a line.
+		 * If existing text should be replaced, the existing text must be a prefix of the text to insert.
+		*/
+		text: string;
+
+		/**
+		 * The range to replace.
+		 * Must begin and end on the same line.
+		 *
+		 * Prefer replacements over insertions to avoid cache invalidation.
+		 * Instead of reporting a completion that extends a word,
+		 * the whole word should be replaced with the extended word.
+		*/
+		range?: Range;
+
+		/**
+		 * An optional {@link Command} that is executed *after* inserting this completion.
+		 */
+		command?: Command;
+
+		constructor(text: string, range?: Range, command?: Command);
+	}
+
+
+	/**
+	 * Be aware that this API will not ever be finalized.
+	 */
+	export namespace window {
+		export function getInlineCompletionItemController<T extends InlineCompletionItem>(provider: InlineCompletionItemProvider<T>): InlineCompletionController<T>;
+	}
+
+	/**
+	 * Be aware that this API will not ever be finalized.
+	 */
+	export interface InlineCompletionController<T extends InlineCompletionItem> {
+		/**
+		 * Is fired when an inline completion item is shown to the user.
+		 */
+		// eslint-disable-next-line vscode-dts-event-naming
+		readonly onDidShowCompletionItem: Event<InlineCompletionItemDidShowEvent<T>>;
+	}
+
+	/**
+	 * Be aware that this API will not ever be finalized.
+	 */
+	export interface InlineCompletionItemDidShowEvent<T extends InlineCompletionItem> {
+		completionItem: T;
+	}
+
+	//#endregion
+
 	//#region FileSystemProvider stat readonly - https://github.com/microsoft/vscode/issues/73122
 
 	export enum FilePermission {
@@ -3314,6 +2884,18 @@
 		 * *Note:* This value might be a bitmask, e.g. `FilePermission.Readonly | FilePermission.Other`.
 		 */
 		permissions?: FilePermission;
+	}
+
+	//#endregion
+
+	//#region https://github.com/microsoft/vscode/issues/87110 @eamodio
+
+	export interface Memento {
+
+		/**
+		 * The stored keys.
+		 */
+		readonly keys: readonly string[];
 	}
 
 	//#endregion
