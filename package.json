@@ -24,6 +24,9 @@
       "supported": true
     }
   },
+  "repository": {
+    "url": "https://github.com/notebookPowerTools/better-jupyter-errors"
+  },
   "contributes": {
     "commands": [
       {
