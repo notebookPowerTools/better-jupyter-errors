@@ -8,7 +8,7 @@
   },
   "publisher": "rebornix",
   "engines": {
-    "vscode": "^1.55.0"
+    "vscode": "^1.57.0-insider"
   },
   "categories": [
     "Other"
